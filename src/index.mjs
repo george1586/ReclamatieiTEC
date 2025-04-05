@@ -4,6 +4,7 @@ import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,31 +36,13 @@ const specs = swaggerJsdoc(options);
 app.use(express.json());
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
-/**
- * @swagger
- * tags:
- *   name: Users
- *   description: User management
- */
 
 /**
  * @swagger
  * /api/users:
  *   get:
- *     summary: Retrieve a list of users
  *     tags: [Users]
  *     responses:
- *       200:
- *         description: A list of users
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 users:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/User'
  *       500:
  *         description: Server error
  */
@@ -72,26 +55,51 @@ app.get('/api/users', (req, res) => {
   }
 });
 
+
 /**
  * @swagger
- * components:
- *   schemas:
- *     User:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           example: "550e8400-e29b-41d4-a716-446655440000"
- *         name:
- *           type: string
- *           example: "John Doe"
- *         email:
- *           type: string
- *           format: email
- *           example: "john@example.com"
+ * /api/user:
+ *   post:
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "John Doe"
+ *     responses:
+ *       201:
+ *         description: User created successfully
+ *       500:
+ *         description: Server error
  */
-app.get('/api-docs.json', (req, res) => {
-  res.json(specs);
+app.post('/api/user', (req, res) => {
+  try {
+    const { name } = req.body;
+    const checkusr=db.prepare(`SELECT * FROM users WHERE name = ?`);
+    const existingUser = checkusr.get(name);
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+    if (!name) {
+      return res.status(400).json({ message: 'Name is required' });
+    }
+
+    const insertStmt = db.prepare("INSERT INTO users (id, name) VALUES (?, ?)");
+    const userId = uuidv4();
+
+    db.transaction(() => {
+          insertStmt.run(userId, name);
+      })();
+
+    res.status(201).json({ message: 'User created' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(PORT, () => {
